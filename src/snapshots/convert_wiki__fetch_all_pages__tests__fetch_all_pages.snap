@@ -1,0 +1,24 @@
+---
+source: src/fetch_all_pages.rs
+expression: resp.query
+---
+ApQueryResult {
+    allpages: [
+        Page {
+            pageid: 26924,
+            title: "$XDG CONFIG DIRS",
+        },
+        Page {
+            pageid: 26923,
+            title: "$XDG CONFIG HOME",
+        },
+        Page {
+            pageid: 17457,
+            title: ".AURINFO",
+        },
+        Page {
+            pageid: 24812,
+            title: ".NET",
+        },
+    ],
+}

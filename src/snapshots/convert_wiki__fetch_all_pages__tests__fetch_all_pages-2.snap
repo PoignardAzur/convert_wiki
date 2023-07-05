@@ -1,0 +1,24 @@
+---
+source: src/fetch_all_pages.rs
+expression: resp.query
+---
+ApQueryResult {
+    allpages: [
+        Page {
+            pageid: 33662,
+            title: ".NET Core",
+        },
+        Page {
+            pageid: 27932,
+            title: ".NET Core (Español)",
+        },
+        Page {
+            pageid: 28040,
+            title: ".NET Core (Português)",
+        },
+        Page {
+            pageid: 24880,
+            title: ".NET Core (简体中文)",
+        },
+    ],
+}
