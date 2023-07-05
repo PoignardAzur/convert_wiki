@@ -1,0 +1,18 @@
+---
+source: src/get_author.rs
+expression: author_data
+---
+[
+    (
+        "Alice Smith",
+        "Alice Smith <alice-smith@example.com>",
+    ),
+    (
+        "Bob Smith",
+        "Bob Smith <bob-smith@example.com>",
+    ),
+    (
+        "Scarlett Johansson",
+        "Scarlett Johansson <scarlett-johansson@example.com>",
+    ),
+]
