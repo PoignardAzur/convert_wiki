@@ -1,3 +1,4 @@
+use bstr::BString;
 use reqwest::Error;
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path};
@@ -5,12 +6,12 @@ use std::{collections::HashMap, path::Path};
 #[derive(Debug, Default, Deserialize)]
 pub struct AuthorData {
     /// Maps author wiki-names to 'Full NAME <email@example.com>' strings
-    pub authors: HashMap<String, String>,
+    pub authors: HashMap<BString, String>,
 }
 
 pub fn load_author_data(filename: &Path) -> Result<AuthorData, csv::Error> {
     let mut reader = csv::Reader::from_path(filename)?;
-    let mut authors: HashMap<String, String> = HashMap::new();
+    let mut authors: HashMap<BString, String> = HashMap::new();
     for record in reader.into_records() {
         let (name, email) = record?.deserialize(None)?;
         authors.insert(name, email);

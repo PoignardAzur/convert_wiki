@@ -1,3 +1,4 @@
+use bstr::BString;
 use reqwest::Error;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -28,27 +29,25 @@ pub struct RvPage {
 pub struct Revision {
     pub revid: u64,
     pub timestamp: String,
-    // TODO - Handle non-unicode strings
-    pub user: String,
-    pub comment: String,
+    pub user: BString,
+    pub comment: BString,
     pub slots: HashMap<String, RvSlot>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct RvSlot {
     #[serde(rename = "*")]
-    pub content: String,
+    pub content: BString,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ParsedRevision {
     pub revid: u64,
     pub timestamp: String,
-    // TODO - Handle non-unicode strings
-    pub title: String,
-    pub user: String,
-    pub comment: String,
-    pub content: String,
+    pub title: BString,
+    pub user: BString,
+    pub comment: BString,
+    pub content: BString,
 }
 
 pub async fn fetch_revisions(
@@ -82,7 +81,7 @@ pub async fn fetch_revisions(
     Ok(serde_json::from_value(resp).unwrap())
 }
 
-pub fn get_parsed_revisions(query: RvQueryResult, title: &str) -> Vec<ParsedRevision> {
+pub fn get_parsed_revisions(query: RvQueryResult, title: BString) -> Vec<ParsedRevision> {
     let mut parsed_revisions = Vec::new();
 
     for (_, page) in query.pages {
@@ -94,7 +93,7 @@ pub fn get_parsed_revisions(query: RvQueryResult, title: &str) -> Vec<ParsedRevi
                     parsed_revisions.push(ParsedRevision {
                         revid: revision.revid,
                         timestamp: revision.timestamp.clone(),
-                        title: title.to_string(),
+                        title: title.clone(),
                         user: revision.user.clone(),
                         comment: revision.comment.clone(),
                         content: slot.content,
@@ -125,7 +124,7 @@ mod tests {
         assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
         assert_debug_snapshot!(get_parsed_revisions(
             resp.query,
-            "Frequently asked questions"
+            "Frequently asked questions".into()
         ));
 
         let resp = fetch_revisions(&client, &url, pageid, Some(2), resp.cont)
@@ -134,7 +133,7 @@ mod tests {
         assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
         assert_debug_snapshot!(get_parsed_revisions(
             resp.query,
-            "Frequently asked questions"
+            "Frequently asked questions".into()
         ));
     }
 }

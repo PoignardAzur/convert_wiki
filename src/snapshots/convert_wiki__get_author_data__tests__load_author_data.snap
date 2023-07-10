@@ -1,5 +1,5 @@
 ---
-source: src/get_author.rs
+source: src/get_author_data.rs
 expression: author_data
 ---
 [
