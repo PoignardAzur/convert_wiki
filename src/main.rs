@@ -119,8 +119,8 @@ async fn task_process_revisions(
         let author_git_data = authors.get(&revision.user).unwrap();
 
         let mut author = Signature {
-            name: "author_git_data".into(),
-            email: todo!(),
+            name: author_git_data.name.clone(),
+            email: author_git_data.email.clone(),
             time: gix::date::parse(&revision.timestamp, None).unwrap(),
         };
         committer.time = Time::now_utc();
