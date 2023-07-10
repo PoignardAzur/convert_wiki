@@ -5,14 +5,23 @@ expression: author_data
 [
     (
         "Alice Smith",
-        "Alice Smith <alice-smith@example.com>",
+        Author {
+            name: "Alice Smith",
+            email: "alice-smith@example.com",
+        },
     ),
     (
         "Bob Smith",
-        "Bob Smith <bob-smith@example.com>",
+        Author {
+            name: "Bob Smith",
+            email: "bob-smith@example.com",
+        },
     ),
     (
         "Scarlett Johansson",
-        "Scarlett Johansson <scarlett-johansson@example.com>",
+        Author {
+            name: "Scarlett Johansson",
+            email: "scarlett-johansson@example.com",
+        },
     ),
 ]

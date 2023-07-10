@@ -1,3 +1,4 @@
+use bstr::BString;
 use reqwest::Error;
 use serde::Deserialize;
 use serde_json::Value;
@@ -23,7 +24,7 @@ pub struct ApQueryResult {
 #[derive(Debug, Deserialize)]
 pub struct Page {
     pub pageid: u64,
-    pub title: String,
+    pub title: BString,
 }
 
 pub async fn fetch_all_pages(

@@ -6,15 +6,21 @@ use std::{collections::HashMap, path::Path};
 #[derive(Debug, Default, Deserialize)]
 pub struct AuthorData {
     /// Maps author wiki-names to 'Full NAME <email@example.com>' strings
-    pub authors: HashMap<BString, String>,
+    pub authors: HashMap<BString, Author>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+pub struct Author {
+    pub name: BString,
+    pub email: BString,
 }
 
 pub fn load_author_data(filename: &Path) -> Result<AuthorData, csv::Error> {
     let mut reader = csv::Reader::from_path(filename)?;
-    let mut authors: HashMap<BString, String> = HashMap::new();
+    let mut authors: HashMap<BString, Author> = HashMap::new();
     for record in reader.into_records() {
-        let (name, email) = record?.deserialize(None)?;
-        authors.insert(name, email);
+        let (key, name, email) = record?.deserialize(None)?;
+        authors.insert(key, Author { name, email });
     }
     Ok(AuthorData { authors })
 }
