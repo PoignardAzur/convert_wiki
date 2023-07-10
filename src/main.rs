@@ -3,8 +3,9 @@
 mod create_repo;
 mod fetch_all_pages;
 mod fetch_revisions;
-mod get_author;
+mod get_author_data;
 
+use bstr::{BStr, BString, ByteSlice};
 use gix::{actor::Signature, config::tree::Author, date::Time, Repository};
 use reqwest::Error;
 use serde::Deserialize;
@@ -17,7 +18,7 @@ use std::{
 
 use fetch_all_pages::fetch_all_pages;
 use fetch_revisions::{fetch_revisions, get_parsed_revisions, ParsedRevision};
-use get_author::{load_author_data, AuthorData};
+use get_author_data::{load_author_data, AuthorData};
 
 // TODO - switch to bstring
 // TODO - skip redirections
@@ -72,7 +73,7 @@ async fn task_get_revisions(
                 let mut revisions =
                     fetch_revisions(client, url, pageid, None, rv_continue_token).await?;
 
-                for revision in get_parsed_revisions(revisions.query, &page.title) {
+                for revision in get_parsed_revisions(revisions.query, page.title.clone().into()) {
                     sender.send(revision).await.unwrap();
                 }
 
@@ -129,20 +130,20 @@ async fn task_process_revisions(
     Ok(())
 }
 
-fn get_file_path(page_name: &str) -> PathBuf {
+fn get_file_path(page_name: &BString) -> PathBuf {
     // replace spaces with underscores
-    let page_name = page_name.replace(" ", "_");
+    let mut page_name = page_name.replace(" ", "_");
     // skip forbidden characters
-    let page_name = page_name.replace(
-        &[
-            '<', '>', ':', '\'', '|', '?', '*', '\0', '\x01', '\x02', '\x03', '\x04', '\x05',
-            '\x06', '\x07', '\x08', '\x09', '\x0a', '\x0b', '\x0c', '\x0d', '\x0e', '\x0f', '\x10',
-            '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17', '\x18', '\x19', '\x1a', '\x1b',
-            '\x1c', '\x1d', '\x1e', '\x1f',
-        ][..],
-        "",
-    );
+    let forbidden_characters = [
+        b"<", b">", b":", b"\\", b"|", b"?", b"*", b"\0", b"\x01", b"\x02", b"\x03", b"\x04",
+        b"\x05", b"\x06", b"\x07", b"\x08", b"\x09", b"\x0a", b"\x0b", b"\x0c", b"\x0d", b"\x0e",
+        b"\x0f", b"\x10", b"\x11", b"\x12", b"\x13", b"\x14", b"\x15", b"\x16", b"\x17", b"\x18",
+        b"\x19", b"\x1a", b"\x1b", b"\x1c", b"\x1d", b"\x1e", b"\x1f",
+    ];
+    for c in forbidden_characters {
+        page_name = page_name.replace(c, "");
+    }
 
     // automatically handles path separators
-    PathBuf::from(page_name).with_extension("md")
+    page_name.to_path_lossy().with_extension("md")
 }
