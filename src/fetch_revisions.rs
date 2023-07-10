@@ -9,6 +9,8 @@ pub struct RvContinueToken {
 
 #[derive(Debug, Deserialize)]
 pub struct RvApiResult {
+    #[serde(rename = "continue")]
+    pub cont: Option<RvContinueToken>,
     pub query: RvQueryResult,
 }
 
@@ -25,7 +27,9 @@ pub struct RvPage {
 #[derive(Debug, Default, Deserialize)]
 pub struct Revision {
     pub revid: u64,
+    pub timestamp: String,
     // TODO - Handle non-unicode strings
+    pub user: String,
     pub comment: String,
     pub slots: HashMap<String, RvSlot>,
 }
@@ -39,12 +43,15 @@ pub struct RvSlot {
 #[derive(Debug, Default, Deserialize)]
 pub struct ParsedRevision {
     pub revid: u64,
+    pub timestamp: String,
     // TODO - Handle non-unicode strings
+    pub title: String,
+    pub user: String,
     pub comment: String,
     pub content: String,
 }
 
-async fn fetch_revisions(
+pub async fn fetch_revisions(
     client: &reqwest::Client,
     url: &str,
     pageid: u64,
@@ -57,7 +64,7 @@ async fn fetch_revisions(
     params.insert("format", "json".to_string());
     params.insert("prop", "revisions".to_string());
     params.insert("pageids", pageid.to_string());
-    params.insert("rvprop", "ids|comment|content".to_string());
+    params.insert("rvprop", "ids|timestamp|user|comment|content".to_string());
     params.insert("rvslots", "*".to_string());
     params.insert("rvlimit", limit.to_string());
     if let Some(continue_token) = continue_token {
@@ -75,10 +82,10 @@ async fn fetch_revisions(
     Ok(serde_json::from_value(resp).unwrap())
 }
 
-fn get_parsed_revisions(resp: RvApiResult) -> Vec<ParsedRevision> {
+pub fn get_parsed_revisions(query: RvQueryResult, title: &str) -> Vec<ParsedRevision> {
     let mut parsed_revisions = Vec::new();
 
-    for (_, page) in resp.query.pages {
+    for (_, page) in query.pages {
         for revision in page.revisions {
             for (name, slot) in revision.slots {
                 if name != "main" {
@@ -86,6 +93,9 @@ fn get_parsed_revisions(resp: RvApiResult) -> Vec<ParsedRevision> {
                 } else {
                     parsed_revisions.push(ParsedRevision {
                         revid: revision.revid,
+                        timestamp: revision.timestamp.clone(),
+                        title: title.to_string(),
+                        user: revision.user.clone(),
                         comment: revision.comment.clone(),
                         content: slot.content,
                     });
@@ -113,6 +123,18 @@ mod tests {
             .await
             .unwrap();
         assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
-        assert_debug_snapshot!(get_parsed_revisions(resp));
+        assert_debug_snapshot!(get_parsed_revisions(
+            resp.query,
+            "Frequently asked questions"
+        ));
+
+        let resp = fetch_revisions(&client, &url, pageid, Some(2), resp.cont)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
+        assert_debug_snapshot!(get_parsed_revisions(
+            resp.query,
+            "Frequently asked questions"
+        ));
     }
 }

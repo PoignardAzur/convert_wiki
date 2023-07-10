@@ -6,6 +6,8 @@ RvPage {
     revisions: [
         Revision {
             revid: 777960,
+            timestamp: "2023-05-13T18:47:23Z",
+            user: "Erus Iluvatar",
             comment: "/* What if I run a full system upgrade and there will be an update for a shared library, but not for the applications that depend on it? */ Adjust wording (do or do not, there is no \"try\") + link to [[Arch User Repository#Updating packages]]",
             slots: {
                 "main": RvSlot {
@@ -15,6 +17,8 @@ RvPage {
         },
         Revision {
             revid: 772102,
+            timestamp: "2023-03-11T20:33:52Z",
+            user: "Erus Iluvatar",
             comment: "Fix broken section link",
             slots: {
                 "main": RvSlot {
