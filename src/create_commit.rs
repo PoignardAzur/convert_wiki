@@ -17,10 +17,8 @@ pub fn create_commit_from_metadata(
     author: Signature<'_>,
     branch_name: &str,
     file_path: &Path,
-    comment: String,
+    comment: &str,
 ) {
-    //let branch_name = get_branch_name(&title);
-    //let file_path = get_file_path(&title);
     let parent = repository
         .revparse_single(branch_name)
         .unwrap()
@@ -35,7 +33,7 @@ pub fn create_commit_from_metadata(
         Some(&format!("refs/heads/{}", branch_name)),
         &author,
         &committer,
-        &comment.to_string(),
+        comment,
         &repository.find_tree(index.write_tree().unwrap()).unwrap(),
         &[&parent],
     );
