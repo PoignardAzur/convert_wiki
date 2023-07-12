@@ -1,4 +1,3 @@
-use bstr::BString;
 use reqwest::Error;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -29,25 +28,25 @@ pub struct RvPage {
 pub struct Revision {
     pub revid: u64,
     pub timestamp: String,
-    pub user: BString,
-    pub comment: BString,
+    pub user: String,
+    pub comment: String,
     pub slots: HashMap<String, RvSlot>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct RvSlot {
     #[serde(rename = "*")]
-    pub content: BString,
+    pub content: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ParsedRevision {
     pub revid: u64,
     pub timestamp: String,
-    pub title: BString,
-    pub user: BString,
-    pub comment: BString,
-    pub content: BString,
+    pub title: String,
+    pub user: String,
+    pub comment: String,
+    pub content: String,
 }
 
 pub async fn fetch_revisions(
@@ -81,7 +80,7 @@ pub async fn fetch_revisions(
     Ok(serde_json::from_value(resp).unwrap())
 }
 
-pub fn get_parsed_revisions(query: RvQueryResult, title: BString) -> Vec<ParsedRevision> {
+pub fn get_parsed_revisions(query: RvQueryResult, title: String) -> Vec<ParsedRevision> {
     let mut parsed_revisions = Vec::new();
 
     for (_, page) in query.pages {
