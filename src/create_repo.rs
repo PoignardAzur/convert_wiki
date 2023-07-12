@@ -16,7 +16,7 @@ mod tests {
 
         println!("pwd: {:?}", std::env::current_dir().unwrap());
 
-        let _ = gix::init("test_create_repo").unwrap();
+        let _ = git2::Repository::init("test_create_repo").unwrap();
         assert!(std::fs::metadata("test_create_repo/.git").unwrap().is_dir());
     }
 }
