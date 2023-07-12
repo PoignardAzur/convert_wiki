@@ -115,24 +115,18 @@ mod tests {
         let client = reqwest::Client::new();
         let url = "https://wiki.archlinux.org/api.php".to_string();
 
-        // Page "Frequently asked questions"
-        let pageid = 1007;
+        // Page "EXWM"
+        let pageid = 24908;
         let resp = fetch_revisions(&client, &url, pageid, Some(2), None)
             .await
             .unwrap();
         assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
-        assert_debug_snapshot!(get_parsed_revisions(
-            resp.query,
-            "Frequently asked questions".into()
-        ));
+        assert_debug_snapshot!(get_parsed_revisions(resp.query, "EXWM".into()));
 
         let resp = fetch_revisions(&client, &url, pageid, Some(2), resp.cont)
             .await
             .unwrap();
         assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
-        assert_debug_snapshot!(get_parsed_revisions(
-            resp.query,
-            "Frequently asked questions".into()
-        ));
+        assert_debug_snapshot!(get_parsed_revisions(resp.query, "EXWM".into()));
     }
 }
