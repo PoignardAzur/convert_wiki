@@ -1,6 +1,7 @@
 use reqwest::Error;
 use serde::Deserialize;
 use std::collections::HashMap;
+use time::{format_description::well_known::Rfc3339, PrimitiveDateTime};
 
 #[derive(Debug, Deserialize)]
 pub struct RvContinueToken {
@@ -39,10 +40,10 @@ pub struct RvSlot {
     pub content: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug)]
 pub struct ParsedRevision {
     pub revid: u64,
-    pub timestamp: String,
+    pub timestamp: PrimitiveDateTime,
     pub title: String,
     pub user: String,
     pub comment: String,
@@ -91,7 +92,7 @@ pub fn get_parsed_revisions(query: RvQueryResult, title: String) -> Vec<ParsedRe
                 } else {
                     parsed_revisions.push(ParsedRevision {
                         revid: revision.revid,
-                        timestamp: revision.timestamp.clone(),
+                        timestamp: PrimitiveDateTime::parse(&revision.timestamp, &Rfc3339).unwrap(),
                         title: title.clone(),
                         user: revision.user.clone(),
                         comment: revision.comment.clone(),

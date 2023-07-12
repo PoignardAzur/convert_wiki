@@ -5,7 +5,7 @@ expression: "get_parsed_revisions(resp.query, \"EXWM\".into())"
 [
     ParsedRevision {
         revid: 688841,
-        timestamp: "2021-07-21T22:35:05Z",
+        timestamp: 2021-07-21 22:35:05.0,
         title: "EXWM",
         user: "Flyingpig",
         comment: "/* Configuration */ Separate lines in a paragraph by [[Help:Style/White space|a single space]].",
@@ -13,7 +13,7 @@ expression: "get_parsed_revisions(resp.query, \"EXWM\".into())"
     },
     ParsedRevision {
         revid: 688839,
-        timestamp: "2021-07-21T22:28:09Z",
+        timestamp: 2021-07-21 22:28:09.0,
         title: "EXWM",
         user: "Ygmatt",
         comment: "Add note about the csetq macro working to change the value of exwm-input-global-keys without restarting EXWM",
