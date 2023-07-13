@@ -13,6 +13,8 @@ serde = { version = "1.0.164", features = ["derive"] }
 serde_json = "1.0.99"
 time = { version = "0.3.23", features = ["parsing"] }
 tokio = { version = "1.29.1", features = ["full"] }
+tracing = { version = "0.1.37", features = ["async-await"] }
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 urlencoding = "2.1.2"
 
 [dev-dependencies]
