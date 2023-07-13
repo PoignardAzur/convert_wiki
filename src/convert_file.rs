@@ -19,7 +19,6 @@ pub fn convert_file(file_path: &Path, title: &str, content: &str) {
         .spawn()
         .unwrap();
 
-    println!("Running pandoc");
     let mut stdin = child_process.stdin.as_mut().unwrap();
     stdin.write_all(content.as_bytes()).unwrap();
     std::mem::drop(child_process.stdin.take());
