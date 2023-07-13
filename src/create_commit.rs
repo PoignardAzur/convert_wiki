@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use git2::{Repository, Signature};
+use tracing::{info_span, trace};
 use urlencoding::encode;
 
 use crate::fetch_revisions::{ParsedRevision, Revision};
@@ -20,6 +21,8 @@ pub fn create_commit_from_metadata(
     file_path: &Path,
     comment: &str,
 ) {
+    let _span = info_span!("create_commit_from_metadata", branch_name).entered();
+
     let parent = repository
         .revparse_single(branch_name)
         .unwrap()
@@ -27,9 +30,11 @@ pub fn create_commit_from_metadata(
         .unwrap();
 
     // stage changes to file at file_path
+    trace!("staging changes to file at {:?}", file_path);
     let mut index = repository.index().unwrap();
     index.add_path(file_path).unwrap();
 
+    trace!("committing changes");
     repository.commit(
         Some(&format!("refs/heads/{}", branch_name)),
         &author,
