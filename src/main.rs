@@ -8,10 +8,7 @@ mod fetch_revisions;
 mod get_author_data;
 
 use convert_file::convert_file;
-use create_commit::{
-    create_commit_from_metadata, get_signature, normalize_special_characters,
-    strip_special_characters,
-};
+use create_commit::{create_commit_from_metadata, get_branch_name, get_file_name, get_signature};
 use git2::{BranchType, Repository, Signature, Time};
 use reqwest::Error;
 use serde::Deserialize;
@@ -29,6 +26,7 @@ use get_author_data::{load_author_data, Author, AuthorData};
 // TODO - skip redirections
 // TODO - handle talk and user pages
 // TODO - unwrap
+// TODO - handle filename collisions
 
 struct ProgramArgs {
     wiki_url: String,
@@ -166,21 +164,18 @@ async fn task_process_revisions(
 ) -> Result<(), std::io::Error> {
     let authors = &author_data.authors;
     while let Some(revision) = receiver.recv().await {
-        let normalized_title = if strip_special_chars {
-            strip_special_characters(&revision.title)
-        } else {
-            normalize_special_characters(&revision.title)
-        };
-        let file_path = Path::new(&normalized_title).with_extension("md");
+        // TODO - strip_special_chars
+        let file_path = Path::new(&get_file_name(&revision.title)).with_extension("md");
+        let branch_name = get_branch_name(&revision.title);
 
         // add new branch to repository if doesn't exist
         if repository
-            .find_branch(&normalized_title, BranchType::Local)
+            .find_branch(&branch_name, BranchType::Local)
             .is_err()
         {
             repository
                 .branch(
-                    &normalized_title,
+                    &branch_name,
                     &repository.head().unwrap().peel_to_commit().unwrap(),
                     false,
                 )
@@ -214,7 +209,7 @@ async fn task_process_revisions(
             repository,
             committer,
             author,
-            &normalized_title,
+            &branch_name,
             &file_path,
             &revision.comment,
         );

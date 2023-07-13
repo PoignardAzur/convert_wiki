@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use git2::{Repository, Signature};
+use urlencoding::encode;
 
 use crate::fetch_revisions::{ParsedRevision, Revision};
 use crate::get_author_data::{Author, AuthorData};
@@ -39,85 +40,25 @@ pub fn create_commit_from_metadata(
     );
 }
 
-pub fn strip_special_characters(page_name: &str) -> String {
-    // replace spaces with underscores
+pub fn get_file_name(page_name: &str) -> String {
     let page_name = page_name.replace(" ", "_");
-    // skip forbidden characters
-    let page_name = page_name.replace(
-        &[
-            '<', '>', ':', '\'', '|', '?', '*', '\0', '\x01', '\x02', '\x03', '\x04', '\x05',
-            '\x06', '\x07', '\x08', '\x09', '\x0a', '\x0b', '\x0c', '\x0d', '\x0e', '\x0f', '\x10',
-            '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17', '\x18', '\x19', '\x1a', '\x1b',
-            '\x1c', '\x1d', '\x1e', '\x1f',
-        ][..],
-        "",
-    );
-
-    let page_name = page_name.replace("/", "_");
-
-    page_name
+    let page_name = encode(&page_name);
+    page_name.into_owned()
 }
 
-pub fn normalize_special_characters(page_name: &str) -> String {
-    // replace characters with their URL encoded equivalents
-    let substitutions = [
-        (" ", "%20"),
-        ("<", "%3C"),
-        (">", "%3E"),
-        (":", "%3A"),
-        ("\'", "%27"),
-        ("|", "%7C"),
-        ("?", "%3F"),
-        ("*", "%2A"),
-        ("\0", "%00"),
-        ("\x01", "%01"),
-        ("\x02", "%02"),
-        ("\x03", "%03"),
-        ("\x04", "%04"),
-        ("\x05", "%05"),
-        ("\x06", "%06"),
-        ("\x07", "%07"),
-        ("\x08", "%08"),
-        ("\x09", "%09"),
-        ("\x0a", "%0A"),
-        ("\x0b", "%0B"),
-        ("\x0c", "%0C"),
-        ("\x0d", "%0D"),
-        ("\x0e", "%0E"),
-        ("\x0f", "%0F"),
-        ("\x10", "%10"),
-        ("\x11", "%11"),
-        ("\x12", "%12"),
-        ("\x13", "%13"),
-        ("\x14", "%14"),
-        ("\x15", "%15"),
-        ("\x16", "%16"),
-        ("\x17", "%17"),
-        ("\x18", "%18"),
-        ("\x19", "%19"),
-        ("\x1a", "%1A"),
-        ("\x1b", "%1B"),
-        ("\x1c", "%1C"),
-        ("\x1d", "%1D"),
-        ("\x1e", "%1E"),
-        ("\x1f", "%1F"),
-    ];
-    let mut page_name = page_name.to_string();
-    for (from, to) in substitutions.iter() {
-        page_name = page_name.replace(from, to);
-    }
-    page_name
+pub fn get_branch_name(page_name: &str) -> String {
+    let page_name = page_name.replace(".", "%2E");
+    let page_name = encode(&page_name);
+    page_name.into_owned()
 }
 
 #[cfg(test)]
 mod tests {
-
+    use super::*;
     use crate::{
         create_repo::create_repo,
         fetch_revisions::{fetch_revisions, get_parsed_revisions},
     };
-
-    use super::*;
 
     /// Removes directory if it exists
     fn clean_dir(dir: &str) {
@@ -200,18 +141,15 @@ mod tests {
     }
 
     #[test]
-    fn test_strip() {
-        assert_eq!(
-            strip_special_characters("'Hello' world?*"),
-            "Hello_world".to_string()
-        );
+    fn test_get_file_name() {
+        assert_eq!(get_file_name("Hello world!"), "Hello_world%21".to_string());
     }
 
     #[test]
-    fn test_normalize() {
+    fn test_get_branch_name() {
         assert_eq!(
-            normalize_special_characters("'Hello' world?*"),
-            "%27Hello%27%20world%3F%2A".to_string()
+            get_branch_name("Hello world."),
+            "Hello_world%2E".to_string()
         );
     }
 }
