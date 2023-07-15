@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use git2::{Repository, Signature};
 use tracing::{info_span, trace};
@@ -14,7 +15,7 @@ pub fn get_signature<'a>(revision: &'a ParsedRevision, author_info: &'a Author) 
 }
 
 pub fn create_commit_from_metadata(
-    repository: &mut Repository,
+    repository: Arc<Mutex<Repository>>,
     committer: Signature<'_>,
     author: Signature<'_>,
     branch_name: &str,
@@ -22,6 +23,7 @@ pub fn create_commit_from_metadata(
     comment: &str,
 ) {
     let _span = info_span!("create_commit_from_metadata", branch_name).entered();
+    let repository = repository.lock().unwrap();
 
     let parent = repository
         .revparse_single(branch_name)
@@ -52,13 +54,15 @@ pub fn get_file_name(page_name: &str) -> String {
 }
 
 pub fn get_branch_name(page_name: &str) -> String {
-    let page_name = page_name.replace(".", "%2E");
     let page_name = encode(&page_name);
-    page_name.into_owned()
+    let page_name = page_name.replace(".", "%2E");
+    page_name
 }
 
 #[cfg(test)]
 mod tests {
+    use urlencoding::decode;
+
     use super::*;
     use crate::{
         create_repo::create_repo,
@@ -118,14 +122,16 @@ mod tests {
         let author = get_signature(revision, &author_info);
         let committer = Signature::new("test", "test", &git2::Time::new(0, 0)).unwrap();
 
+        let repo = Arc::new(Mutex::new(repo));
         create_commit_from_metadata(
-            &mut repo,
+            repo.clone(),
             committer,
             author,
             "test_branch",
             &Path::new("test_file.md"),
             "Commit message".into(),
         );
+        let repo = repo.lock().unwrap();
 
         assert!(std::fs::metadata("test_create_commit/.git")
             .unwrap()
@@ -154,7 +160,15 @@ mod tests {
     fn test_get_branch_name() {
         assert_eq!(
             get_branch_name("Hello world."),
-            "Hello_world%2E".to_string()
+            "Hello%20world%2E".to_string()
+        );
+    }
+
+    #[test]
+    fn test_decode_branch_name() {
+        assert_eq!(
+            decode(&get_branch_name("Hello world.")).unwrap(),
+            "Hello world."
         );
     }
 }

@@ -20,6 +20,7 @@ use tracing_subscriber::EnvFilter;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use fetch_all_pages::{fetch_all_pages, Page};
 use fetch_revisions::{fetch_revisions, get_parsed_revisions, ParsedRevision};
@@ -58,11 +59,13 @@ async fn main() -> Result<(), Error> {
 
     let wiki_url = program_args.wiki_url;
     let url = format!("{wiki_url}/api.php");
+
     let author_data = if let Some(author_data_path) = program_args.author_data {
         load_author_data(&author_data_path).unwrap()
     } else {
         AuthorData::default()
     };
+    let author_data = Arc::new(author_data);
 
     let client = reqwest::Client::new();
 
@@ -73,18 +76,16 @@ async fn main() -> Result<(), Error> {
         let committer = Signature::new("wiki2git", "wiki2git", &Time::new(0, 0)).unwrap();
         create_repo::create_repo(&program_args.output_dir.to_str().unwrap(), committer).unwrap()
     };
-    git2::Repository::open(&program_args.output_dir).unwrap();
+    let repository = Arc::new(Mutex::new(repository));
 
-    let (mut page_sender, mut page_receiver) = mpsc::channel(8); // Create an async channel
-    let (mut rev_sender, mut rev_receiver) = mpsc::channel(32); // Create an async channel
+    let (mut page_sender, mut page_receiver) = mpsc::channel(8);
 
-    // Represents a set of task run on the main thread
+    // Represents a set of tasks that run on the main thread
     let local_set = LocalSet::new();
 
-    // Set of thread-local tasks (which, given Repository is not Send, is everything)
     let client_clone = client.clone();
     let url_clone = url.clone();
-    let pages_task = spawn(async move {
+    let get_pages_task = spawn(async move {
         let span = info_span!("task_get_pages", url = url_clone);
         task_get_pages(
             &client_clone,
@@ -96,41 +97,30 @@ async fn main() -> Result<(), Error> {
         .await
     });
 
-    let revs_task = spawn(async move {
-        let mut revision_count = program_args.revision_count;
-        while let Some(page) = page_receiver.recv().await {
-            let span = info_span!("task_get_revisions", page = page.title.clone());
-            task_get_revisions(
-                &client,
-                &url,
-                page,
-                &mut rev_sender,
-                program_args.revision_count,
-            )
-            .instrument(span)
-            .await;
-        }
-    });
-
-    let commit_task = local_set.run_until(async move {
+    let process_pages_task = local_set.run_until(async move {
         spawn_local(async move {
-            while let Some(revision) = rev_receiver.recv().await {
-                let span = info_span!("task_process_revision", revision = revision.revid);
-                task_process_revision(
-                    &author_data,
-                    revision,
-                    &mut repository,
-                    &program_args.output_dir,
+            info!("Hello");
+            let url_clone = url.clone();
+            let mut revision_count = program_args.revision_count;
+            while let Some(page) = page_receiver.recv().await {
+                let span = info_span!("task_process_page", page = page.title.clone());
+                task_process_page(
+                    &client,
+                    &url_clone,
+                    program_args.output_dir.clone(),
                     program_args.strip_special_chars,
+                    author_data.clone(),
+                    repository.clone(),
+                    page,
+                    revision_count,
                 )
-                .instrument(span)
                 .await;
             }
         })
         .await
     });
 
-    tokio::try_join!(pages_task, revs_task, commit_task).unwrap();
+    tokio::try_join!(get_pages_task, process_pages_task).unwrap();
 
     Ok(())
 }
@@ -163,6 +153,42 @@ async fn task_get_pages(
         }
     }
     Ok(())
+}
+
+async fn task_process_page(
+    client: &reqwest::Client,
+    url: &str,
+    output_dir: PathBuf,
+    strip_special_chars: bool,
+    author_data: Arc<AuthorData>,
+    repository: Arc<Mutex<Repository>>,
+    page: Page,
+    revision_count: Option<u32>,
+) {
+    let (mut rev_sender, mut rev_receiver) = mpsc::channel(32);
+
+    let span = info_span!("task_get_revisions", page = page.title.clone());
+    task_get_revisions(&client, &url, page, &mut rev_sender, revision_count)
+        .instrument(span)
+        .await;
+
+    // Represents a set of tasks that run on the main thread
+    let local_set = LocalSet::new();
+
+    let commit_task = local_set.run_until(spawn_local(async move {
+        while let Some(revision) = rev_receiver.recv().await {
+            let span = info_span!("task_process_revision", revision = revision.revid);
+            task_process_revision(
+                &author_data,
+                revision,
+                repository.clone(),
+                &output_dir,
+                strip_special_chars,
+            )
+            .instrument(span)
+            .await;
+        }
+    }));
 }
 
 async fn task_get_revisions(
@@ -200,7 +226,7 @@ async fn task_get_revisions(
 async fn task_process_revision(
     author_data: &AuthorData,
     revision: ParsedRevision,
-    repository: &mut Repository,
+    repository: Arc<Mutex<Repository>>,
     repository_path: &Path,
     strip_special_chars: bool,
 ) -> Result<(), std::io::Error> {
@@ -214,19 +240,23 @@ async fn task_process_revision(
     let file_path = Path::new(&get_file_name(&revision.title)).with_extension("md");
     let branch_name = get_branch_name(&revision.title);
 
-    // add new branch to repository if doesn't exist
-    if repository
-        .find_branch(&branch_name, BranchType::Local)
-        .is_err()
     {
-        trace!("Creating branch '{}'", branch_name);
-        repository
-            .branch(
-                &branch_name,
-                &repository.head().unwrap().peel_to_commit().unwrap(),
-                false,
-            )
-            .unwrap();
+        let repository = repository.lock().unwrap();
+
+        // add new branch to repository if doesn't exist
+        if repository
+            .find_branch(&branch_name, BranchType::Local)
+            .is_err()
+        {
+            trace!("Creating branch '{}'", branch_name);
+            repository
+                .branch(
+                    &branch_name,
+                    &repository.head().unwrap().peel_to_commit().unwrap(),
+                    false,
+                )
+                .unwrap();
+        }
     }
 
     // create parent directories if necessary
