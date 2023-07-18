@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use git2::{Repository, Signature};
+use git2::{BranchType, Commit, Repository, Signature};
 use tracing::{info_span, trace};
 use urlencoding::encode;
 
@@ -43,6 +43,20 @@ pub fn create_commit_from_metadata(
         &repository.find_tree(index.write_tree().unwrap()).unwrap(),
         &[&parent],
     );
+}
+
+pub fn get_most_recent_commit<'a>(
+    repository: &'a Repository,
+    branch_name: &str,
+) -> Result<Commit<'a>, git2::Error> {
+    let _span = info_span!("get_most_recent_commit", branch_name).entered();
+
+    let branch = repository.find_branch(branch_name, BranchType::Local)?;
+    let branch = branch.into_reference();
+    let branch = branch.target().unwrap();
+
+    let commit = repository.find_commit(branch)?;
+    Ok(commit)
 }
 
 pub fn get_file_name(page_name: &str) -> String {
@@ -143,6 +157,9 @@ mod tests {
             .iter()
             .find(|name| *name == "test_branch")
             .is_some());
+
+        let commit = get_most_recent_commit(&repo, "test_branch").unwrap();
+        assert_eq!(commit.message().unwrap(), "Commit message");
     }
 
     #[test]
