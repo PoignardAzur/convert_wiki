@@ -1,15 +1,12 @@
 #![allow(unused)]
 
 mod convert_file;
-mod create_commit;
-mod create_repo;
 mod fetch_all_pages;
 mod fetch_revisions;
 mod get_author_data;
+mod handle_git;
 mod parse_xml_dump;
 
-use convert_file::convert_file;
-use create_commit::{create_commit_from_metadata, get_branch_name, get_file_name, get_signature};
 use git2::{BranchType, Repository, Signature, Time};
 use reqwest::Error;
 use serde::Deserialize;
@@ -22,9 +19,11 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use convert_file::convert_file;
 use fetch_all_pages::{fetch_all_pages, Page};
 use fetch_revisions::{fetch_revisions, get_parsed_revisions, ParsedRevision};
 use get_author_data::{load_author_data, Author, AuthorData};
+use handle_git::{create_commit_from_metadata, get_branch_name, get_file_name, get_signature};
 
 // TODO - skip redirections
 // TODO - handle talk and user pages
@@ -72,7 +71,7 @@ async fn main() -> Result<(), Error> {
         Repository::open(&program_args.output_dir).unwrap()
     } else {
         let committer = Signature::new("wiki2git", "wiki2git", &Time::new(0, 0)).unwrap();
-        create_repo::create_repo(&program_args.output_dir.to_str().unwrap(), committer).unwrap()
+        handle_git::create_repo(&program_args.output_dir.to_str().unwrap(), committer).unwrap()
     };
     git2::Repository::open(&program_args.output_dir).unwrap();
 
