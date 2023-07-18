@@ -7,6 +7,7 @@ mod parse_xml_dump;
 
 use git2::{BranchType, Repository, Signature, Time};
 use reqwest::Error;
+use time::OffsetDateTime;
 use tokio::{spawn, sync::mpsc};
 use tracing::{info, info_span, trace, Instrument};
 use tracing_subscriber::EnvFilter;
@@ -17,7 +18,11 @@ use convert_file::convert_file;
 use fetch_all_pages::{fetch_all_pages, Page};
 use fetch_revisions::{fetch_revisions, get_parsed_revisions, ParsedRevision};
 use get_author_data::{load_author_data, Author, AuthorData};
-use handle_git::{create_commit_from_metadata, get_branch_name, get_file_name, get_signature};
+use handle_git::{
+    create_branch, create_commit_from_metadata, get_branch_name, get_file_name, get_signature,
+};
+
+use crate::handle_git::get_most_recent_commit;
 
 // TODO - skip redirections
 // TODO - handle talk and user pages
@@ -87,22 +92,39 @@ async fn main() -> Result<(), Error> {
     });
 
     while let Some(page) = page_receiver.recv().await {
+        let branch_name = get_branch_name(&page.title);
+        let branch = repository.find_branch(&branch_name, BranchType::Local);
+        let last_commit_date;
+        if branch.is_err() {
+            // add new branch to repository if doesn't exist
+            create_branch(&repository, &branch_name);
+            last_commit_date = None;
+        } else {
+            let last_commit = get_most_recent_commit(&repository, &branch_name).unwrap();
+            last_commit.author().when();
+            let datetime =
+                OffsetDateTime::from_unix_timestamp(last_commit.author().when().seconds()).unwrap();
+            last_commit_date = Some(datetime);
+        }
+        std::mem::drop(branch);
+
         let client_clone = client.clone();
         let url_clone = url.clone();
         let (mut rev_sender, mut rev_receiver) = mpsc::channel(32);
         let revs_task = spawn(async move {
             let span = info_span!("task_get_revisions", page = page.title.clone());
-            let res = task_get_revisions(
+            let count = task_get_revisions(
                 &client_clone,
                 &url_clone,
                 page,
                 &mut rev_sender,
+                last_commit_date,
                 program_args.revision_count,
             )
             .instrument(span)
-            .await;
-
-            res
+            .await
+            .unwrap();
+            info!("Fetched {} revisions", count);
         });
 
         while let Some(revision) = rev_receiver.recv().await {
@@ -119,7 +141,7 @@ async fn main() -> Result<(), Error> {
             .unwrap();
         }
 
-        revs_task.await.unwrap().unwrap();
+        revs_task.await.unwrap();
     }
 
     pages_task.await.unwrap().unwrap();
@@ -163,20 +185,33 @@ async fn task_get_revisions(
     url: &str,
     page: Page,
     sender: &mut mpsc::Sender<ParsedRevision>,
+    starting_date: Option<OffsetDateTime>,
     revision_count: Option<u32>,
-) -> Result<(), Error> {
+) -> Result<i32, Error> {
     let pageid = page.pageid;
     let mut revision_count = revision_count;
     let mut rv_continue_token = None;
-    loop {
-        info!("Fetching revisions for page '{}'", page.title);
+    let mut count = 0;
 
-        let revisions = fetch_revisions(&client, url, pageid, None, rv_continue_token).await?;
+    if let Some(starting_date) = starting_date {
+        info!(
+            "Fetching revisions for page '{}' starting from {}",
+            page.title, starting_date
+        );
+    } else {
+        info!("Fetching revisions for page '{}'", page.title);
+    }
+
+    loop {
+        trace!("Fetching more revisions for page '{}'", page.title);
+
+        let revisions =
+            fetch_revisions(&client, url, pageid, None, starting_date, rv_continue_token).await?;
 
         for revision in get_parsed_revisions(revisions.query, page.title.clone().into()) {
             if let Some(0) = revision_count {
                 trace!("Reached revision count limit, stopping");
-                return Ok(());
+                return Ok(count);
             }
             revision_count = revision_count.map(|count| count - 1);
 
@@ -186,6 +221,7 @@ async fn task_get_revisions(
                 revision.title
             );
             sender.send(revision).await.unwrap();
+            count += 1;
         }
 
         rv_continue_token = revisions.cont;
@@ -193,7 +229,7 @@ async fn task_get_revisions(
             break;
         }
     }
-    Ok(())
+    Ok(count)
 }
 
 async fn task_process_revision(
@@ -212,21 +248,6 @@ async fn task_process_revision(
 
     let file_path = Path::new(&get_file_name(&revision.title)).with_extension("md");
     let branch_name = get_branch_name(&revision.title);
-
-    // add new branch to repository if doesn't exist
-    if repository
-        .find_branch(&branch_name, BranchType::Local)
-        .is_err()
-    {
-        trace!("Creating branch '{}'", branch_name);
-        repository
-            .branch(
-                &branch_name,
-                &repository.head().unwrap().peel_to_commit().unwrap(),
-                false,
-            )
-            .unwrap();
-    }
 
     // create parent directories if necessary
     if let Some(parent) = file_path.parent() {

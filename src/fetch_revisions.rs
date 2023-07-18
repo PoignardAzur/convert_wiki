@@ -1,7 +1,8 @@
 use reqwest::Error;
 use serde::Deserialize;
 use std::collections::HashMap;
-use time::{format_description::well_known::Rfc3339, PrimitiveDateTime};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime, PrimitiveDateTime};
+use tracing::warn;
 
 #[derive(Debug, Deserialize)]
 pub struct RvContinueToken {
@@ -55,6 +56,7 @@ pub async fn fetch_revisions(
     url: &str,
     pageid: u64,
     limit: Option<u32>,
+    starting_date: Option<OffsetDateTime>,
     continue_token: Option<RvContinueToken>,
 ) -> Result<RvApiResult, Error> {
     let limit = limit.unwrap_or(5);
@@ -66,6 +68,12 @@ pub async fn fetch_revisions(
     params.insert("rvprop", "ids|timestamp|user|comment|content".to_string());
     params.insert("rvslots", "*".to_string());
     params.insert("rvlimit", limit.to_string());
+    if let Some(starting_date) = starting_date {
+        if let Ok(starting_date) = starting_date.format(&Rfc3339) {
+            params.insert("rvstart", starting_date);
+            params.insert("rvdir", "newer".to_string());
+        }
+    }
     if let Some(continue_token) = continue_token {
         params.insert("rvcontinue", continue_token.rvcontinue);
     }
@@ -88,7 +96,7 @@ pub fn get_parsed_revisions(query: RvQueryResult, title: String) -> Vec<ParsedRe
         for revision in page.revisions {
             for (name, slot) in revision.slots {
                 if name != "main" {
-                    eprintln!("Warning: unexpected slot name: {}", name);
+                    warn!("Unexpected slot name: '{}'", name);
                 } else {
                     parsed_revisions.push(ParsedRevision {
                         revid: revision.revid,
@@ -110,6 +118,7 @@ pub fn get_parsed_revisions(query: RvQueryResult, title: String) -> Vec<ParsedRe
 mod tests {
     use super::*;
     use insta::assert_debug_snapshot;
+    use time::macros::datetime;
 
     #[tokio::test]
     async fn test_fetch_content() {
@@ -118,13 +127,28 @@ mod tests {
 
         // Page "EXWM"
         let pageid = 24908;
-        let resp = fetch_revisions(&client, &url, pageid, Some(2), None)
+        let resp = fetch_revisions(&client, &url, pageid, Some(2), None, None)
             .await
             .unwrap();
         assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
         assert_debug_snapshot!(get_parsed_revisions(resp.query, "EXWM".into()));
 
-        let resp = fetch_revisions(&client, &url, pageid, Some(2), resp.cont)
+        let resp = fetch_revisions(&client, &url, pageid, Some(2), None, resp.cont)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(resp.query.pages.values().next().unwrap());
+        assert_debug_snapshot!(get_parsed_revisions(resp.query, "EXWM".into()));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_after() {
+        let client = reqwest::Client::new();
+        let url = "https://wiki.archlinux.org/api.php".to_string();
+
+        // Page "EXWM"
+        let pageid = 24908;
+        let datetime = datetime!(2021-01-01 00:00:00 +00:00);
+        let resp = fetch_revisions(&client, &url, pageid, Some(2), Some(datetime), None)
             .await
             .unwrap();
         assert_debug_snapshot!(resp.query.pages.values().next().unwrap());

@@ -27,6 +27,17 @@ pub fn create_repo(path: &str, committer: Signature<'_>) -> Result<Repository, g
     Ok(repo)
 }
 
+pub fn create_branch(repository: &Repository, branch_name: &str) {
+    trace!("Creating branch '{}'", branch_name);
+    repository
+        .branch(
+            &branch_name,
+            &repository.head().unwrap().peel_to_commit().unwrap(),
+            false,
+        )
+        .unwrap();
+}
+
 pub fn get_signature<'a>(revision: &'a ParsedRevision, author_info: &'a Author) -> Signature<'a> {
     let time = revision.timestamp.assume_utc().unix_timestamp();
     let time = git2::Time::new(time, 0);
@@ -67,7 +78,6 @@ pub fn create_commit_from_metadata(
         .unwrap();
 }
 
-#[allow(dead_code)]
 pub fn get_most_recent_commit<'a>(
     repository: &'a Repository,
     branch_name: &str,
@@ -137,7 +147,7 @@ mod tests {
 
         // Page "EXWM"
         let pageid = 24908;
-        let resp = fetch_revisions(&client, &url, pageid, Some(2), None)
+        let resp = fetch_revisions(&client, &url, pageid, Some(2), None, None)
             .await
             .unwrap();
         let revisions = get_parsed_revisions(resp.query, "EXWM".into());
