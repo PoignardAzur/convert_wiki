@@ -52,9 +52,9 @@ pub fn get_file_name(page_name: &str) -> String {
 }
 
 pub fn get_branch_name(page_name: &str) -> String {
-    let page_name = page_name.replace(".", "%2E");
     let page_name = encode(&page_name);
-    page_name.into_owned()
+    let page_name = page_name.replace(".", "%2E");
+    page_name
 }
 
 #[cfg(test)]
@@ -154,7 +154,7 @@ mod tests {
     fn test_get_branch_name() {
         assert_eq!(
             get_branch_name("Hello world."),
-            "Hello_world%2E".to_string()
+            "Hello%20world%2E".to_string()
         );
     }
 }
