@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{copy, Read, Write};
+use std::io::{copy, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -27,20 +27,17 @@ pub fn convert_file(file_path: &Path, title: &str, content: &str) {
         .spawn()
         .unwrap();
 
-    let mut stdin = child_process.stdin.as_mut().unwrap();
+    let stdin = child_process.stdin.as_mut().unwrap();
     stdin.write_all(content.as_bytes()).unwrap();
     std::mem::drop(child_process.stdin.take());
 
     trace!("Writing output to file");
-    copy(&mut child_process.stdout.unwrap(), &mut file);
+    copy(&mut child_process.stdout.unwrap(), &mut file).unwrap();
 }
 
 #[cfg(test)]
 mod tests {
-    use insta::assert_snapshot;
-
     use super::*;
-    use std::fs::read_to_string;
 
     #[test]
     fn test_convert_file() {

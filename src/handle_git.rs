@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use std::path::{Path, PathBuf};
 
 use git2::{BranchType, Commit, Repository, Signature};
@@ -8,7 +10,7 @@ use crate::fetch_revisions::{ParsedRevision, Revision};
 use crate::get_author_data::{Author, AuthorData};
 
 pub fn create_repo(path: &str, committer: Signature<'_>) -> Result<Repository, git2::Error> {
-    let mut repo = git2::Repository::init(path).unwrap();
+    let repo = git2::Repository::init(path).unwrap();
 
     // create empty commit
     let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
@@ -53,16 +55,19 @@ pub fn create_commit_from_metadata(
     index.add_path(file_path).unwrap();
 
     trace!("committing changes");
-    repository.commit(
-        Some(&format!("refs/heads/{}", branch_name)),
-        &author,
-        &committer,
-        comment,
-        &repository.find_tree(index.write_tree().unwrap()).unwrap(),
-        &[&parent],
-    );
+    repository
+        .commit(
+            Some(&format!("refs/heads/{}", branch_name)),
+            &author,
+            &committer,
+            comment,
+            &repository.find_tree(index.write_tree().unwrap()).unwrap(),
+            &[&parent],
+        )
+        .unwrap();
 }
 
+#[allow(dead_code)]
 pub fn get_most_recent_commit<'a>(
     repository: &'a Repository,
     branch_name: &str,
@@ -112,7 +117,7 @@ mod tests {
 
         // check that master branch exists
         let branches = repo.branches(None).unwrap();
-        let mut branch_names = branches
+        let branch_names = branches
             .map(|branch| {
                 let (branch, _) = branch.unwrap();
                 branch.name().unwrap().unwrap().to_string()
@@ -181,7 +186,7 @@ mod tests {
 
         // check that test_branch exists
         let branches = repo.branches(None).unwrap();
-        let mut branch_names = branches
+        let branch_names = branches
             .map(|branch| {
                 let (branch, _) = branch.unwrap();
                 branch.name().unwrap().unwrap().to_string()

@@ -1,4 +1,3 @@
-use reqwest::Error;
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path};
 
@@ -15,7 +14,7 @@ pub struct Author {
 }
 
 pub fn load_author_data(filename: &Path) -> Result<AuthorData, csv::Error> {
-    let mut reader = csv::Reader::from_path(filename)?;
+    let reader = csv::Reader::from_path(filename)?;
     let mut authors: HashMap<String, Author> = HashMap::new();
     for record in reader.into_records() {
         let (key, name, email) = record?.deserialize(None)?;

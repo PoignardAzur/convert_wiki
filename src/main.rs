@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 mod convert_file;
 mod fetch_all_pages;
 mod fetch_revisions;
@@ -9,14 +7,10 @@ mod parse_xml_dump;
 
 use git2::{BranchType, Repository, Signature, Time};
 use reqwest::Error;
-use serde::Deserialize;
-use tokio::task::LocalSet;
-use tokio::{spawn, sync::mpsc, task::spawn_local};
+use tokio::{spawn, sync::mpsc};
 use tracing::{info, info_span, trace, Instrument};
 use tracing_subscriber::EnvFilter;
 
-use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use convert_file::convert_file;
@@ -77,9 +71,6 @@ async fn main() -> Result<(), Error> {
 
     let (mut page_sender, mut page_receiver) = mpsc::channel(8);
 
-    // Represents a set of task run on the main thread
-    let local_set = LocalSet::new();
-
     // Set of thread-local tasks (which, given Repository is not Send, is everything)
     let client_clone = client.clone();
     let url_clone = url.clone();
@@ -124,13 +115,14 @@ async fn main() -> Result<(), Error> {
                 program_args.strip_special_chars,
             )
             .instrument(span)
-            .await;
+            .await
+            .unwrap();
         }
 
-        revs_task.await.unwrap();
+        revs_task.await.unwrap().unwrap();
     }
 
-    pages_task.await.unwrap();
+    pages_task.await.unwrap().unwrap();
 
     Ok(())
 }
@@ -146,7 +138,7 @@ async fn task_get_pages(
     let mut page_count = page_count;
     loop {
         let mut ap_continue_token = None;
-        let mut pages = fetch_all_pages(&client, url, None, ap_continue_token).await?;
+        let pages = fetch_all_pages(&client, url, None, ap_continue_token).await?;
 
         for page in pages.query.allpages {
             if let Some(0) = page_count {
@@ -179,7 +171,7 @@ async fn task_get_revisions(
     loop {
         info!("Fetching revisions for page '{}'", page.title);
 
-        let mut revisions = fetch_revisions(&client, url, pageid, None, rv_continue_token).await?;
+        let revisions = fetch_revisions(&client, url, pageid, None, rv_continue_token).await?;
 
         for revision in get_parsed_revisions(revisions.query, page.title.clone().into()) {
             if let Some(0) = revision_count {
@@ -209,7 +201,7 @@ async fn task_process_revision(
     revision: ParsedRevision,
     repository: &mut Repository,
     repository_path: &Path,
-    strip_special_chars: bool,
+    _strip_special_chars: bool,
 ) -> Result<(), std::io::Error> {
     info!(
         "Processing revision {} of page '{}'",
@@ -252,7 +244,8 @@ async fn task_process_revision(
     spawn(async move {
         convert_file(&absolute_file_path, &title, &content);
     })
-    .await;
+    .await
+    .unwrap();
 
     // FIXME - implement more sensible default
     let default_author = Author {
@@ -260,8 +253,8 @@ async fn task_process_revision(
         email: "unknown-email@example.com".to_string(),
     };
     let author_git_data = authors.get(&revision.user).unwrap_or(&default_author);
-    let mut author = get_signature(&revision, &author_git_data);
-    let mut committer = Signature::new("name", "email", &Time::new(0, 0)).unwrap();
+    let author = get_signature(&revision, &author_git_data);
+    let committer = Signature::new("name", "email", &Time::new(0, 0)).unwrap();
 
     create_commit_from_metadata(
         repository,
