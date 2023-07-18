@@ -76,8 +76,7 @@ async fn main() -> Result<(), Error> {
     };
     git2::Repository::open(&program_args.output_dir).unwrap();
 
-    let (mut page_sender, mut page_receiver) = mpsc::channel(8); // Create an async channel
-    let (mut rev_sender, mut rev_receiver) = mpsc::channel(32); // Create an async channel
+    let (mut page_sender, mut page_receiver) = mpsc::channel(8);
 
     // Represents a set of task run on the main thread
     let local_set = LocalSet::new();
@@ -97,41 +96,42 @@ async fn main() -> Result<(), Error> {
         .await
     });
 
-    let revs_task = spawn(async move {
-        let mut revision_count = program_args.revision_count;
-        while let Some(page) = page_receiver.recv().await {
+    while let Some(page) = page_receiver.recv().await {
+        let client_clone = client.clone();
+        let url_clone = url.clone();
+        let (mut rev_sender, mut rev_receiver) = mpsc::channel(32);
+        let revs_task = spawn(async move {
             let span = info_span!("task_get_revisions", page = page.title.clone());
-            task_get_revisions(
-                &client,
-                &url,
+            let res = task_get_revisions(
+                &client_clone,
+                &url_clone,
                 page,
                 &mut rev_sender,
                 program_args.revision_count,
             )
             .instrument(span)
             .await;
+
+            res
+        });
+
+        while let Some(revision) = rev_receiver.recv().await {
+            let span = info_span!("task_process_revision", revision = revision.revid);
+            task_process_revision(
+                &author_data,
+                revision,
+                &mut repository,
+                &program_args.output_dir,
+                program_args.strip_special_chars,
+            )
+            .instrument(span)
+            .await;
         }
-    });
 
-    let commit_task = local_set.run_until(async move {
-        spawn_local(async move {
-            while let Some(revision) = rev_receiver.recv().await {
-                let span = info_span!("task_process_revision", revision = revision.revid);
-                task_process_revision(
-                    &author_data,
-                    revision,
-                    &mut repository,
-                    &program_args.output_dir,
-                    program_args.strip_special_chars,
-                )
-                .instrument(span)
-                .await;
-            }
-        })
-        .await
-    });
+        revs_task.await.unwrap();
+    }
 
-    tokio::try_join!(pages_task, revs_task, commit_task).unwrap();
+    pages_task.await.unwrap();
 
     Ok(())
 }
@@ -151,6 +151,7 @@ async fn task_get_pages(
 
         for page in pages.query.allpages {
             if let Some(0) = page_count {
+                trace!("Reached page count limit, stopping");
                 return Ok(());
             }
             page_count = page_count.map(|count| count - 1);
@@ -183,10 +184,16 @@ async fn task_get_revisions(
 
         for revision in get_parsed_revisions(revisions.query, page.title.clone().into()) {
             if let Some(0) = revision_count {
-                break;
+                trace!("Reached revision count limit, stopping");
+                return Ok(());
             }
             revision_count = revision_count.map(|count| count - 1);
 
+            trace!(
+                "Sending revision {} of page '{}'",
+                revision.revid,
+                revision.title
+            );
             sender.send(revision).await.unwrap();
         }
 
