@@ -5,6 +5,7 @@ mod get_author_data;
 mod handle_git;
 mod parse_xml_dump;
 
+use clap::Parser;
 use git2::{BranchType, Repository, Signature, Time};
 use reqwest::Error;
 use time::OffsetDateTime;
@@ -30,25 +31,35 @@ use crate::handle_git::get_most_recent_commit;
 // TODO - unwrap
 // TODO - handle filename collisions
 
+/// CLI utility to convert MediaWiki pages to Gitlab Markdown with git history
+#[derive(Debug, Parser)]
 struct ProgramArgs {
+    /// The base url of the wiki, e.g. https://wiki.archlinux.org
     wiki_url: String,
-    page_count: Option<u32>,
-    revision_count: Option<u32>,
-    strip_special_chars: bool,
-    output_dir: PathBuf,
+
+    /// The directory to store the git repository in
+    output_dir: Option<PathBuf>,
+
+    /// A file containing a csv mapping wiki-names to git names and emails
     author_data: Option<PathBuf>,
+
+    /// A maximum number of pages to fetch. Useful for quick testing
+    #[arg(short, long)]
+    page_count: Option<u32>,
+
+    /// A maximum number of revisions to fetch per page. Useful for quick testing
+    #[arg(short, long)]
+    revision_count: Option<u32>,
+
+    /// Strip special characters from filenames. This reduces the odds of file collisions. Defaults to true
+    #[arg(short, long, default_value_t = true)]
+    strip_special_chars: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let program_args = ProgramArgs {
-        wiki_url: "https://wiki.archlinux.org".to_string(),
-        page_count: Some(5),
-        revision_count: Some(5),
-        strip_special_chars: true,
-        output_dir: PathBuf::from("output"),
-        author_data: None,
-    };
+    let program_args = ProgramArgs::parse();
+    let output_dir = program_args.output_dir.unwrap_or(PathBuf::from("output"));
 
     // TODO - Add better tracing
     tracing_subscriber::fmt()
@@ -71,12 +82,11 @@ async fn main() -> Result<(), Error> {
     let client = reqwest::Client::new();
 
     // If path exists, open repository, else create new repository
-    let mut repository = if program_args.output_dir.exists() {
-        Repository::open(&program_args.output_dir).unwrap()
+    let mut repository = if output_dir.exists() {
+        Repository::open(&output_dir).unwrap()
     } else {
-        handle_git::create_repo(&program_args.output_dir.to_str().unwrap(), &committer).unwrap()
+        handle_git::create_repo(&output_dir.to_str().unwrap(), &committer).unwrap()
     };
-    git2::Repository::open(&program_args.output_dir).unwrap();
 
     let (mut page_sender, mut page_receiver) = mpsc::channel(8);
 
@@ -137,7 +147,7 @@ async fn main() -> Result<(), Error> {
                 &author_data,
                 revision,
                 &mut repository,
-                &program_args.output_dir,
+                &output_dir,
                 program_args.strip_special_chars,
             )
             .instrument(span)
