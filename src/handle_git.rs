@@ -2,39 +2,53 @@
 
 use std::path::{Path, PathBuf};
 
-use git2::{BranchType, Commit, Repository, Signature};
-use tracing::{info_span, trace};
+use git2::build::CheckoutBuilder;
+use git2::{AnnotatedCommit, BranchType, Commit, Repository, Signature};
+use tracing::{debug, debug_span, info_span, trace};
+use tracing_subscriber::field::debug;
 use urlencoding::encode;
 
 use crate::fetch_revisions::{ParsedRevision, Revision};
 use crate::get_author_data::{Author, AuthorData};
 
-pub fn create_repo(path: &str, committer: Signature<'_>) -> Result<Repository, git2::Error> {
+pub fn create_repo(path: &str, committer: &Signature<'_>) -> Result<Repository, git2::Error> {
     let repo = git2::Repository::init(path).unwrap();
 
     // create empty commit
     let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
-    repo.commit(
-        Some("HEAD"),
-        &committer,
-        &committer,
-        "Initial commit",
-        &repo.find_tree(tree_id).unwrap(),
-        &[],
-    )
-    .unwrap();
+    let commit_id = repo
+        .commit(
+            Some("HEAD"),
+            &committer,
+            committer,
+            "Initial commit",
+            &repo.find_tree(tree_id).unwrap(),
+            &[],
+        )
+        .unwrap();
+
+    repo.branch("base", &repo.find_commit(commit_id).unwrap(), false)
+        .unwrap();
 
     Ok(repo)
 }
 
-pub fn create_branch(repository: &Repository, branch_name: &str) {
+pub fn create_branch(repository: &Repository, base_name: &str, branch_name: &str) {
     trace!("Creating branch '{}'", branch_name);
     repository
         .branch(
             &branch_name,
-            &repository.head().unwrap().peel_to_commit().unwrap(),
+            &repository
+                .revparse_single(base_name)
+                .unwrap()
+                .peel_to_commit()
+                .unwrap(),
             false,
         )
+        .unwrap();
+    // switch to branch
+    repository
+        .set_head(&format!("refs/heads/{}", branch_name))
         .unwrap();
 }
 
@@ -42,6 +56,17 @@ pub fn get_signature<'a>(revision: &'a ParsedRevision, author_info: &'a Author) 
     let time = revision.timestamp.assume_utc().unix_timestamp();
     let time = git2::Time::new(time, 0);
     Signature::new(&author_info.name, &author_info.email, &time).unwrap()
+}
+
+fn swallow_already_applied<T>(res: Result<T, git2::Error>) -> Result<(), git2::Error> {
+    match res {
+        Ok(_) => Ok(()),
+        Err(e) if e.code() == git2::ErrorCode::Applied => {
+            trace!("skipping already applied commit");
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 pub fn create_commit_from_metadata(
@@ -65,16 +90,27 @@ pub fn create_commit_from_metadata(
     let mut index = repository.index().unwrap();
     index.add_path(file_path).unwrap();
 
+    if index.is_empty() {
+        trace!("no changes to commit");
+        return;
+    }
+
     trace!("committing changes");
     repository
         .commit(
-            Some(&format!("refs/heads/{}", branch_name)),
+            Some(format!("refs/heads/{}", branch_name).as_str()),
             &author,
             &committer,
             comment,
             &repository.find_tree(index.write_tree().unwrap()).unwrap(),
             &[&parent],
         )
+        .unwrap();
+
+    trace!("cleaning files");
+    let mut checkout_builder = CheckoutBuilder::new();
+    repository
+        .checkout_index(None, Some(checkout_builder.force()))
         .unwrap();
 }
 
@@ -90,6 +126,70 @@ pub fn get_most_recent_commit<'a>(
 
     let commit = repository.find_commit(branch)?;
     Ok(commit)
+}
+
+pub fn rebase_branch(
+    repository: &Repository,
+    branch_name: &str,
+    committer: &Signature<'_>,
+    upstream_name: &str,
+) -> Result<(), git2::Error> {
+    let _span = info_span!("rebase_branch", branch_name, upstream_name).entered();
+
+    let upstream = repository.reference_to_annotated_commit(
+        &repository
+            .find_branch(upstream_name, BranchType::Local)?
+            .into_reference(),
+    )?;
+
+    trace!("switching to branch '{}'", branch_name);
+    repository
+        .set_head(&format!("refs/heads/{}", branch_name))
+        .unwrap();
+    trace!("cleaning files");
+    let mut checkout_builder = CheckoutBuilder::new();
+    repository
+        .checkout_index(None, Some(checkout_builder.force()))
+        .unwrap();
+
+    trace!("starting rebase");
+    let mut rebase = repository
+        .rebase(None, Some(&upstream), None, None)
+        .unwrap();
+
+    while let Some(op) = rebase.next() {
+        match op {
+            Ok(operation) => {
+                trace!("rebase operation: {:?}", operation);
+                let res = rebase.commit(None, committer, None);
+                // We skip "commit already applied" errors. I'm not sure why some
+                // of them happen, but in any case, some of them will happen because
+                // this program is meant to be resumable, and resuming it will produce
+                // some duplicate commits.
+                swallow_already_applied(res)?;
+            }
+            Err(err) => {
+                trace!("rebase error: {:?}", err);
+                rebase.abort()?;
+                return Err(err);
+            }
+        }
+    }
+
+    rebase.finish(None)?;
+
+    // set upstream to result of rebase
+    repository.branch(
+        &upstream_name,
+        &repository
+            .revparse_single(branch_name)
+            .unwrap()
+            .peel_to_commit()
+            .unwrap(),
+        true,
+    )?;
+
+    Ok(())
 }
 
 pub fn get_file_name(page_name: &str) -> String {
@@ -122,7 +222,7 @@ mod tests {
         clean_dir("test_create_repo");
 
         let committer = Signature::new("test", "test", &git2::Time::new(0, 0)).unwrap();
-        let repo = create_repo("test_create_repo", committer).unwrap();
+        let repo = create_repo("test_create_repo", &committer).unwrap();
         assert!(std::fs::metadata("test_create_repo/.git").unwrap().is_dir());
 
         // check that master branch exists
@@ -133,7 +233,7 @@ mod tests {
                 branch.name().unwrap().unwrap().to_string()
             })
             .collect::<Vec<_>>();
-        assert_eq!(branch_names, vec!["master"]);
+        assert_eq!(branch_names, vec!["base", "master"]);
     }
 
     #[tokio::test]
@@ -155,7 +255,7 @@ mod tests {
         println!("revision: {:?}", revision);
 
         let committer = Signature::new("test", "test", &git2::Time::new(0, 0)).unwrap();
-        let mut repo = create_repo("test_create_commit", committer).unwrap();
+        let mut repo = create_repo("test_create_commit", &committer).unwrap();
 
         // add new branch to repository
         repo.branch(

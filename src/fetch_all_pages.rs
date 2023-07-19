@@ -49,7 +49,6 @@ pub async fn fetch_all_pages(
         .await?
         .json::<Value>()
         .await?;
-    //println!("{:#?}", resp);
     Ok(serde_json::from_value(resp).unwrap())
 }
 

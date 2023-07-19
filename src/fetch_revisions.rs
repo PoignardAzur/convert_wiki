@@ -23,6 +23,7 @@ pub struct RvQueryResult {
 
 #[derive(Debug, Deserialize)]
 pub struct RvPage {
+    #[serde(default)]
     pub revisions: Vec<Revision>,
 }
 
@@ -85,7 +86,6 @@ pub async fn fetch_revisions(
         .await?
         .json::<serde_json::Value>()
         .await?;
-    //println!("{:#?}", resp);
     Ok(serde_json::from_value(resp).unwrap())
 }
 

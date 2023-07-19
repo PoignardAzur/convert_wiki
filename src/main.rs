@@ -20,6 +20,7 @@ use fetch_revisions::{fetch_revisions, get_parsed_revisions, ParsedRevision};
 use get_author_data::{load_author_data, Author, AuthorData};
 use handle_git::{
     create_branch, create_commit_from_metadata, get_branch_name, get_file_name, get_signature,
+    rebase_branch,
 };
 
 use crate::handle_git::get_most_recent_commit;
@@ -49,6 +50,7 @@ async fn main() -> Result<(), Error> {
         author_data: None,
     };
 
+    // TODO - Add better tracing
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("info")))
         .init();
@@ -63,14 +65,16 @@ async fn main() -> Result<(), Error> {
         AuthorData::default()
     };
 
+    // FIXME
+    let committer = Signature::new("wiki2git", "wiki2git", &Time::new(0, 0)).unwrap();
+
     let client = reqwest::Client::new();
 
     // If path exists, open repository, else create new repository
     let mut repository = if program_args.output_dir.exists() {
         Repository::open(&program_args.output_dir).unwrap()
     } else {
-        let committer = Signature::new("wiki2git", "wiki2git", &Time::new(0, 0)).unwrap();
-        handle_git::create_repo(&program_args.output_dir.to_str().unwrap(), committer).unwrap()
+        handle_git::create_repo(&program_args.output_dir.to_str().unwrap(), &committer).unwrap()
     };
     git2::Repository::open(&program_args.output_dir).unwrap();
 
@@ -97,7 +101,7 @@ async fn main() -> Result<(), Error> {
         let last_commit_date;
         if branch.is_err() {
             // add new branch to repository if doesn't exist
-            create_branch(&repository, &branch_name);
+            create_branch(&repository, "base", &branch_name);
             last_commit_date = None;
         } else {
             let last_commit = get_most_recent_commit(&repository, &branch_name).unwrap();
@@ -141,6 +145,8 @@ async fn main() -> Result<(), Error> {
             .unwrap();
         }
 
+        rebase_branch(&repository, &branch_name, &committer, "master").unwrap();
+
         revs_task.await.unwrap();
     }
 
@@ -158,8 +164,8 @@ async fn task_get_pages(
     info!("Fetching pages");
 
     let mut page_count = page_count;
+    let mut ap_continue_token = None;
     loop {
-        let mut ap_continue_token = None;
         let pages = fetch_all_pages(&client, url, None, ap_continue_token).await?;
 
         for page in pages.query.allpages {
@@ -169,6 +175,7 @@ async fn task_get_pages(
             }
             page_count = page_count.map(|count| count - 1);
 
+            info!("Fetched page {} '{}'", page.pageid, page.title);
             sender.send(page).await.unwrap();
         }
 
