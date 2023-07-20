@@ -75,7 +75,9 @@ async fn main() -> Result<(), Error> {
         AuthorData::default()
     };
 
-    let committer = Signature::new("CONVERT_WIKI", "", &Time::new(0, 0)).unwrap();
+    // git2-rs doesn't let us create a commit with no email, so we use a dummy email
+    let committer =
+        Signature::new("CONVERT_WIKI", "no-email@example.com", &Time::new(0, 0)).unwrap();
 
     let client = reqwest::Client::new();
 
@@ -311,9 +313,10 @@ async fn task_process_revision(
                 revision.user
             );
         }
+        // git2-rs doesn't let us create a commit with no email, so we use a dummy email
         Author {
             name: revision.user.clone(),
-            email: "".to_string(),
+            email: "no-email@example.com".to_string(),
         }
     };
 
