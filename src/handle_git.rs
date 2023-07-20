@@ -46,10 +46,6 @@ pub fn create_branch(repository: &Repository, base_name: &str, branch_name: &str
             false,
         )
         .unwrap();
-    // switch to branch
-    repository
-        .set_head(&format!("refs/heads/{}", branch_name))
-        .unwrap();
 }
 
 pub fn get_signature<'a>(revision: &'a ParsedRevision, author_info: &'a Author) -> Signature<'a> {
@@ -67,6 +63,17 @@ fn swallow_already_applied<T>(res: Result<T, git2::Error>) -> Result<(), git2::E
         }
         Err(e) => Err(e),
     }
+}
+
+pub fn clean_files(repository: &Repository) {
+    trace!("cleaning files");
+    let mut checkout_builder = CheckoutBuilder::new();
+    checkout_builder.force();
+    checkout_builder.remove_untracked(true);
+    checkout_builder.update_index(true);
+    repository
+        .checkout_head(Some(&mut checkout_builder))
+        .unwrap();
 }
 
 pub fn create_commit_from_metadata(
@@ -107,11 +114,7 @@ pub fn create_commit_from_metadata(
         )
         .unwrap();
 
-    trace!("cleaning files");
-    let mut checkout_builder = CheckoutBuilder::new();
-    repository
-        .checkout_index(None, Some(checkout_builder.force()))
-        .unwrap();
+    clean_files(repository);
 }
 
 pub fn get_most_recent_commit<'a>(
@@ -146,11 +149,7 @@ pub fn rebase_branch(
     repository
         .set_head(&format!("refs/heads/{}", branch_name))
         .unwrap();
-    trace!("cleaning files");
-    let mut checkout_builder = CheckoutBuilder::new();
-    repository
-        .checkout_index(None, Some(checkout_builder.force()))
-        .unwrap();
+    clean_files(repository);
 
     trace!("starting rebase");
     let mut rebase = repository
