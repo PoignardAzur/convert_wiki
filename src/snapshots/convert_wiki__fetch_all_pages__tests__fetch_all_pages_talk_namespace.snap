@@ -1,0 +1,24 @@
+---
+source: src/fetch_all_pages.rs
+expression: resp.query
+---
+ApQueryResult {
+    allpages: [
+        Page {
+            pageid: 23238,
+            title: "Talk:.SRCINFO",
+        },
+        Page {
+            pageid: 5914,
+            title: "Talk:.xinitrc",
+        },
+        Page {
+            pageid: 21758,
+            title: "Talk:1C Enterprise (Русский)",
+        },
+        Page {
+            pageid: 28604,
+            title: "Talk:32-bit package guidelines",
+        },
+    ],
+}

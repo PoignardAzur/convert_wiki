@@ -191,14 +191,29 @@ pub fn rebase_branch(
     Ok(())
 }
 
-pub fn get_file_name(page_name: &str) -> String {
+pub fn get_file_name(page_name: &str, namespace: u32) -> PathBuf {
     let page_name = page_name.replace("_", "__");
     let page_name = page_name.replace(" ", "_");
     let page_name = encode(&page_name);
-    page_name.into_owned()
+    if namespace == 0 {
+        format!("Main/{page_name}.md").into()
+    } else if namespace != 6 {
+        // The page name will be something like "User:Foo"
+        // which encode transforms into "User%3AFoo"
+        PathBuf::from(page_name.replacen("%3A", "/", 1)).with_extension("md")
+    } else {
+        // namespace == 6 for the File namespace,
+        // for which we don't want to change the extension
+        PathBuf::from(page_name.replacen("%3A", "/", 1))
+    }
 }
 
-pub fn get_branch_name(page_name: &str) -> String {
+pub fn get_branch_name(page_name: &str, namespace: u32) -> String {
+    let page_name = if namespace == 0 {
+        format!("Main:{}", page_name)
+    } else {
+        page_name.to_string()
+    };
     let page_name = encode(&page_name);
     let page_name = page_name.replace(".", "%2E");
     page_name
@@ -313,15 +328,45 @@ mod tests {
 
     #[test]
     fn test_get_file_name() {
-        assert_eq!(get_file_name("Hello world!"), "Hello_world%21".to_string());
-        assert_eq!(get_file_name("FOO_BAR BAZ"), "FOO__BAR_BAZ".to_string());
+        assert_eq!(
+            get_file_name("Hello world!", 0).to_string_lossy(),
+            "Main/Hello_world%21.md"
+        );
+        assert_eq!(
+            get_file_name("FOO_BAR BAZ", 0).to_string_lossy(),
+            "Main/FOO__BAR_BAZ.md"
+        );
     }
 
     #[test]
     fn test_get_branch_name() {
         assert_eq!(
-            get_branch_name("Hello world."),
-            "Hello%20world%2E".to_string()
+            get_branch_name("Hello world.", 0),
+            "Main%3AHello%20world%2E".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_file_name_usertalk_namespace() {
+        assert_eq!(
+            get_file_name("User Talk:Hello world!", 3).to_string_lossy(),
+            "User_Talk/Hello_world%21.md"
+        );
+    }
+
+    #[test]
+    fn test_get_file_name_file_namespace() {
+        assert_eq!(
+            get_file_name("File:foobar.png", 6).to_string_lossy(),
+            "File/foobar.png"
+        );
+    }
+
+    #[test]
+    fn test_get_branch_name_usertalk_namespace() {
+        assert_eq!(
+            get_branch_name("User Talk:Hello world.", 3),
+            "User%20Talk%3AHello%20world%2E".to_string()
         );
     }
 }

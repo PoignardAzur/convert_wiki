@@ -96,13 +96,14 @@ async fn main() -> Result<(), Error> {
             &url_clone,
             &mut page_sender,
             program_args.page_count,
+            0,
         )
         .instrument(span)
         .await
     });
 
     while let Some(page) = page_receiver.recv().await {
-        let branch_name = get_branch_name(&page.title);
+        let branch_name = get_branch_name(&page.title, 0);
         let branch = repository.find_branch(&branch_name, BranchType::Local);
         let last_commit_date;
         if branch.is_err() {
@@ -160,13 +161,14 @@ async fn task_get_pages(
     url: &str,
     sender: &mut mpsc::Sender<Page>,
     page_count: Option<u32>,
+    namespace: u32,
 ) -> Result<(), Error> {
     info!("Fetching pages");
 
     let mut page_count = page_count;
     let mut ap_continue_token = None;
     loop {
-        let pages = fetch_all_pages(&client, url, Some(30), ap_continue_token).await?;
+        let pages = fetch_all_pages(&client, url, Some(30), ap_continue_token, namespace).await?;
 
         for page in pages.query.allpages {
             if let Some(0) = page_count {
@@ -259,11 +261,12 @@ async fn task_process_revision(
 
     let authors = &author_data.authors;
 
-    let file_path = Path::new(&get_file_name(&revision.title)).with_extension("md");
-    let branch_name = get_branch_name(&revision.title);
+    let file_path = get_file_name(&revision.title, 0);
+    let branch_name = get_branch_name(&revision.title, 0);
+    let absolute_file_path = repository_path.join(&file_path);
 
     // create parent directories if necessary
-    if let Some(parent) = file_path.parent() {
+    if let Some(parent) = absolute_file_path.parent() {
         trace!(
             "Creating parent directories for '{}'",
             file_path.to_string_lossy()
@@ -274,7 +277,6 @@ async fn task_process_revision(
     // execute pandoc command with revision.content as input and write to file_path
     let title = revision.title.clone();
     let content = revision.content.clone();
-    let absolute_file_path = repository_path.join(&file_path);
     spawn(async move {
         convert_file(&absolute_file_path, &title, &content);
     })

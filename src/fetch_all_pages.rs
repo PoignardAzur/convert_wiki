@@ -31,6 +31,7 @@ pub async fn fetch_all_pages(
     url: &str,
     limit: Option<u32>,
     continue_token: Option<ApContinueToken>,
+    namespace: u32,
 ) -> Result<ApApiResult, Error> {
     let limit = limit.unwrap_or(50);
     let mut params: HashMap<&str, String> = HashMap::new();
@@ -38,6 +39,7 @@ pub async fn fetch_all_pages(
     params.insert("format", "json".to_string());
     params.insert("list", "allpages".to_string());
     params.insert("aplimit", limit.to_string());
+    params.insert("apnamespace", namespace.to_string());
     if let Some(continue_token) = continue_token {
         params.insert("apcontinue", continue_token.apcontinue);
     }
@@ -62,10 +64,28 @@ mod tests {
         let client = reqwest::Client::new();
         let url = "https://wiki.archlinux.org/api.php".to_string();
 
-        let resp = fetch_all_pages(&client, &url, Some(4), None).await.unwrap();
+        let resp = fetch_all_pages(&client, &url, Some(4), None, 0)
+            .await
+            .unwrap();
         assert_debug_snapshot!(resp.query);
 
-        let resp = fetch_all_pages(&client, &url, Some(4), resp.cont)
+        let resp = fetch_all_pages(&client, &url, Some(4), resp.cont, 0)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(resp.query);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_pages_talk_namespace() {
+        let client = reqwest::Client::new();
+        let url = "https://wiki.archlinux.org/api.php".to_string();
+
+        let resp = fetch_all_pages(&client, &url, Some(4), None, 1)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(resp.query);
+
+        let resp = fetch_all_pages(&client, &url, Some(4), resp.cont, 1)
             .await
             .unwrap();
         assert_debug_snapshot!(resp.query);

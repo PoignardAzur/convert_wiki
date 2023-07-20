@@ -1,0 +1,24 @@
+---
+source: src/fetch_all_pages.rs
+expression: resp.query
+---
+ApQueryResult {
+    allpages: [
+        Page {
+            pageid: 18933,
+            title: "Talk:32bit chroot (Česky)",
+        },
+        Page {
+            pageid: 34781,
+            title: "Talk:3G and GPRS modems with pppd",
+        },
+        Page {
+            pageid: 3590,
+            title: "Talk:64-bit FAQ",
+        },
+        Page {
+            pageid: 13623,
+            title: "Talk:ACPI modules",
+        },
+    ],
+}
