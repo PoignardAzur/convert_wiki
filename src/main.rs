@@ -10,7 +10,7 @@ use git2::{BranchType, Repository, Signature, Time};
 use reqwest::Error;
 use time::OffsetDateTime;
 use tokio::{spawn, sync::mpsc};
-use tracing::{info, info_span, trace, Instrument};
+use tracing::{info, info_span, trace, warn, Instrument};
 use tracing_subscriber::EnvFilter;
 
 use std::path::{Path, PathBuf};
@@ -27,9 +27,7 @@ use handle_git::{
 use crate::handle_git::get_most_recent_commit;
 
 // TODO - skip redirections
-// TODO - handle talk and user pages
 // TODO - unwrap
-// TODO - handle filename collisions
 
 /// CLI utility to convert MediaWiki pages to Gitlab Markdown with git history
 #[derive(Debug, Parser)]
@@ -66,18 +64,18 @@ async fn main() -> Result<(), Error> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("info")))
         .init();
 
-    // TODO - handle case where user gives xxx/api.php
-
-    let wiki_url = program_args.wiki_url;
-    let url = format!("{wiki_url}/api.php");
-    let author_data = if let Some(author_data_path) = program_args.author_data {
-        load_author_data(&author_data_path).unwrap()
+    let url = if program_args.wiki_url.ends_with("/api.php") {
+        program_args.wiki_url
+    } else {
+        format!("{}/api.php", program_args.wiki_url)
+    };
+    let author_data = if let Some(author_data_path) = program_args.author_data.as_ref() {
+        load_author_data(author_data_path).unwrap()
     } else {
         AuthorData::default()
     };
 
-    // FIXME
-    let committer = Signature::new("wiki2git", "wiki2git", &Time::new(0, 0)).unwrap();
+    let committer = Signature::new("CONVERT_WIKI", "", &Time::new(0, 0)).unwrap();
 
     let client = reqwest::Client::new();
 
@@ -304,12 +302,21 @@ async fn task_process_revision(
     .await
     .unwrap();
 
-    // FIXME - implement more sensible default
-    let default_author = Author {
-        name: "Unknown author".to_string(),
-        email: "unknown-email@example.com".to_string(),
+    let author_git_data = if let Some(author_git_data) = authors.get(&revision.user) {
+        author_git_data.clone()
+    } else {
+        if !authors.is_empty() {
+            warn!(
+                "No git author data found for wiki author '{}', commit will have empty email",
+                revision.user
+            );
+        }
+        Author {
+            name: revision.user.clone(),
+            email: "".to_string(),
+        }
     };
-    let author_git_data = authors.get(&revision.user).unwrap_or(&default_author);
+
     let author = get_signature(&revision, &author_git_data);
     let committer = Signature::new("name", "email", &Time::new(0, 0)).unwrap();
 

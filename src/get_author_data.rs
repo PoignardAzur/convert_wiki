@@ -7,7 +7,7 @@ pub struct AuthorData {
     pub authors: HashMap<String, Author>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 pub struct Author {
     pub name: String,
     pub email: String,
