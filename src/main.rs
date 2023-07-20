@@ -50,6 +50,10 @@ struct ProgramArgs {
     /// A maximum number of revisions to fetch per page. Useful for quick testing
     #[arg(short, long)]
     revision_count: Option<u32>,
+
+    /// A comma-separated list of namespaces to fetch. Default to 0 (main namespace)
+    #[arg(short, long)]
+    namespaces: Option<String>,
 }
 
 #[tokio::main]
@@ -84,74 +88,90 @@ async fn main() -> Result<(), Error> {
         handle_git::create_repo(&output_dir.to_str().unwrap(), &committer).unwrap()
     };
 
-    let (mut page_sender, mut page_receiver) = mpsc::channel(8);
+    // TODO - remove unwrap
+    let namespaces: Vec<u32> = program_args
+        .namespaces
+        .unwrap_or("0".into())
+        .split(",")
+        .map(|s| s.parse().unwrap())
+        .collect();
+    for namespace in namespaces {
+        let (mut page_sender, mut page_receiver) = mpsc::channel(8);
 
-    // Set of thread-local tasks (which, given Repository is not Send, is everything)
-    let client_clone = client.clone();
-    let url_clone = url.clone();
-    let pages_task = spawn(async move {
-        let span = info_span!("task_get_pages", url = url_clone);
-        task_get_pages(
-            &client_clone,
-            &url_clone,
-            &mut page_sender,
-            program_args.page_count,
-            0,
-        )
-        .instrument(span)
-        .await
-    });
-
-    while let Some(page) = page_receiver.recv().await {
-        let branch_name = get_branch_name(&page.title, 0);
-        let branch = repository.find_branch(&branch_name, BranchType::Local);
-        let last_commit_date;
-        if branch.is_err() {
-            // add new branch to repository if doesn't exist
-            create_branch(&repository, "base", &branch_name);
-            last_commit_date = None;
-        } else {
-            let last_commit = get_most_recent_commit(&repository, &branch_name).unwrap();
-            last_commit.author().when();
-            let datetime =
-                OffsetDateTime::from_unix_timestamp(last_commit.author().when().seconds()).unwrap();
-            last_commit_date = Some(datetime);
-        }
-        std::mem::drop(branch);
-
+        // Set of thread-local tasks (which, given Repository is not Send, is everything)
         let client_clone = client.clone();
         let url_clone = url.clone();
-        let (mut rev_sender, mut rev_receiver) = mpsc::channel(32);
-        let revs_task = spawn(async move {
-            let span = info_span!("task_get_revisions", page = page.title.clone());
-            let count = task_get_revisions(
+        let pages_task = spawn(async move {
+            let span = info_span!("task_get_pages", url = url_clone);
+            task_get_pages(
                 &client_clone,
                 &url_clone,
-                page,
-                &mut rev_sender,
-                last_commit_date,
-                program_args.revision_count,
+                &mut page_sender,
+                program_args.page_count,
+                namespace,
             )
             .instrument(span)
             .await
-            .unwrap();
-            info!("Fetched {} revisions", count);
         });
 
-        while let Some(revision) = rev_receiver.recv().await {
-            let span = info_span!("task_process_revision", revision = revision.revid);
-            task_process_revision(&author_data, revision, &mut repository, &output_dir)
+        while let Some(page) = page_receiver.recv().await {
+            let branch_name = get_branch_name(&page.title, namespace);
+            let branch = repository.find_branch(&branch_name, BranchType::Local);
+            let last_commit_date;
+            if branch.is_err() {
+                // add new branch to repository if doesn't exist
+                create_branch(&repository, "base", &branch_name);
+                last_commit_date = None;
+            } else {
+                let last_commit = get_most_recent_commit(&repository, &branch_name).unwrap();
+                last_commit.author().when();
+                let datetime =
+                    OffsetDateTime::from_unix_timestamp(last_commit.author().when().seconds())
+                        .unwrap();
+                last_commit_date = Some(datetime);
+            }
+            std::mem::drop(branch);
+
+            let client_clone = client.clone();
+            let url_clone = url.clone();
+            let (mut rev_sender, mut rev_receiver) = mpsc::channel(32);
+            let revs_task = spawn(async move {
+                let span = info_span!("task_get_revisions", page = page.title.clone());
+                let count = task_get_revisions(
+                    &client_clone,
+                    &url_clone,
+                    page,
+                    &mut rev_sender,
+                    last_commit_date,
+                    program_args.revision_count,
+                )
                 .instrument(span)
                 .await
                 .unwrap();
+                info!("Fetched {} revisions", count);
+            });
+
+            while let Some(revision) = rev_receiver.recv().await {
+                let span = info_span!("task_process_revision", revision = revision.revid);
+                task_process_revision(
+                    &author_data,
+                    revision,
+                    &mut repository,
+                    &output_dir,
+                    namespace,
+                )
+                .instrument(span)
+                .await
+                .unwrap();
+            }
+
+            rebase_branch(&repository, &branch_name, &committer, "master").unwrap();
+
+            revs_task.await.unwrap();
         }
 
-        rebase_branch(&repository, &branch_name, &committer, "master").unwrap();
-
-        revs_task.await.unwrap();
+        pages_task.await.unwrap().unwrap();
     }
-
-    pages_task.await.unwrap().unwrap();
 
     Ok(())
 }
@@ -253,6 +273,7 @@ async fn task_process_revision(
     revision: ParsedRevision,
     repository: &mut Repository,
     repository_path: &Path,
+    namespace: u32,
 ) -> Result<(), std::io::Error> {
     info!(
         "Processing revision {} of page '{}'",
@@ -261,8 +282,8 @@ async fn task_process_revision(
 
     let authors = &author_data.authors;
 
-    let file_path = get_file_name(&revision.title, 0);
-    let branch_name = get_branch_name(&revision.title, 0);
+    let file_path = get_file_name(&revision.title, namespace);
+    let branch_name = get_branch_name(&revision.title, namespace);
     let absolute_file_path = repository_path.join(&file_path);
 
     // create parent directories if necessary
