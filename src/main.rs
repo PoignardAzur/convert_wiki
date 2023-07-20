@@ -50,10 +50,6 @@ struct ProgramArgs {
     /// A maximum number of revisions to fetch per page. Useful for quick testing
     #[arg(short, long)]
     revision_count: Option<u32>,
-
-    /// Strip special characters from filenames. This reduces the odds of file collisions. Defaults to true
-    #[arg(short, long, default_value_t = true)]
-    strip_special_chars: bool,
 }
 
 #[tokio::main]
@@ -143,16 +139,10 @@ async fn main() -> Result<(), Error> {
 
         while let Some(revision) = rev_receiver.recv().await {
             let span = info_span!("task_process_revision", revision = revision.revid);
-            task_process_revision(
-                &author_data,
-                revision,
-                &mut repository,
-                &output_dir,
-                program_args.strip_special_chars,
-            )
-            .instrument(span)
-            .await
-            .unwrap();
+            task_process_revision(&author_data, revision, &mut repository, &output_dir)
+                .instrument(span)
+                .await
+                .unwrap();
         }
 
         rebase_branch(&repository, &branch_name, &committer, "master").unwrap();
@@ -261,7 +251,6 @@ async fn task_process_revision(
     revision: ParsedRevision,
     repository: &mut Repository,
     repository_path: &Path,
-    _strip_special_chars: bool,
 ) -> Result<(), std::io::Error> {
     info!(
         "Processing revision {} of page '{}'",

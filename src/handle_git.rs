@@ -192,6 +192,7 @@ pub fn rebase_branch(
 }
 
 pub fn get_file_name(page_name: &str) -> String {
+    let page_name = page_name.replace("_", "__");
     let page_name = page_name.replace(" ", "_");
     let page_name = encode(&page_name);
     page_name.into_owned()
@@ -313,6 +314,7 @@ mod tests {
     #[test]
     fn test_get_file_name() {
         assert_eq!(get_file_name("Hello world!"), "Hello_world%21".to_string());
+        assert_eq!(get_file_name("FOO_BAR BAZ"), "FOO__BAR_BAZ".to_string());
     }
 
     #[test]
