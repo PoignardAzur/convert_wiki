@@ -176,7 +176,7 @@ async fn task_get_pages(
     let mut page_count = page_count;
     let mut ap_continue_token = None;
     loop {
-        let pages = fetch_all_pages(&client, url, None, ap_continue_token).await?;
+        let pages = fetch_all_pages(&client, url, Some(30), ap_continue_token).await?;
 
         for page in pages.query.allpages {
             if let Some(0) = page_count {
@@ -222,8 +222,15 @@ async fn task_get_revisions(
     loop {
         trace!("Fetching more revisions for page '{}'", page.title);
 
-        let revisions =
-            fetch_revisions(&client, url, pageid, None, starting_date, rv_continue_token).await?;
+        let revisions = fetch_revisions(
+            &client,
+            url,
+            pageid,
+            Some(30),
+            starting_date,
+            rv_continue_token,
+        )
+        .await?;
 
         for revision in get_parsed_revisions(revisions.query, page.title.clone().into()) {
             if let Some(0) = revision_count {
