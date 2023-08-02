@@ -4,6 +4,7 @@ mod create_repo;
 mod fetch_all_pages;
 mod fetch_revisions;
 mod get_author;
+mod parse_xml_dump;
 
 use gix::{actor::Signature, config::tree::Author, date::Time, Repository};
 use reqwest::Error;
