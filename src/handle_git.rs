@@ -4,12 +4,15 @@ use std::path::{Path, PathBuf};
 
 use git2::build::CheckoutBuilder;
 use git2::{AnnotatedCommit, BranchType, Commit, Repository, Signature};
+use time::format_description::well_known::Rfc3339;
+use time::PrimitiveDateTime;
 use tracing::{debug, debug_span, info_span, trace};
 use tracing_subscriber::field::debug;
 use urlencoding::encode;
 
 use crate::fetch_revisions::{ParsedRevision, Revision};
 use crate::get_author_data::{Author, AuthorData};
+use crate::parse_xml_dump::RevisionDump;
 
 pub fn create_repo(path: &str, committer: &Signature<'_>) -> Result<Repository, git2::Error> {
     let repo = git2::Repository::init(path).unwrap();
@@ -46,6 +49,13 @@ pub fn create_branch(repository: &Repository, base_name: &str, branch_name: &str
             false,
         )
         .unwrap();
+}
+
+pub fn get_signature2<'a>(revision: &'a RevisionDump, author_info: &'a Author) -> Signature<'a> {
+    let time = PrimitiveDateTime::parse(&revision.timestamp, &Rfc3339).unwrap();
+    let time = time.assume_utc().unix_timestamp();
+    let time = git2::Time::new(time, 0);
+    Signature::new(&author_info.name, &author_info.email, &time).unwrap()
 }
 
 pub fn get_signature<'a>(revision: &'a ParsedRevision, author_info: &'a Author) -> Signature<'a> {
@@ -191,7 +201,7 @@ pub fn rebase_branch(
     Ok(())
 }
 
-pub fn get_file_name(page_name: &str, namespace: u32) -> PathBuf {
+pub fn get_file_name(page_name: &str, namespace: i32) -> PathBuf {
     let page_name = page_name.replace("_", "__");
     let page_name = page_name.replace(" ", "_");
     let page_name = encode(&page_name);
@@ -208,7 +218,7 @@ pub fn get_file_name(page_name: &str, namespace: u32) -> PathBuf {
     }
 }
 
-pub fn get_branch_name(page_name: &str, namespace: u32) -> String {
+pub fn get_branch_name(page_name: &str, namespace: i32) -> String {
     let page_name = if namespace == 0 {
         format!("Main:{}", page_name)
     } else {

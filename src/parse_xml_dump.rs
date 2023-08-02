@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -94,30 +94,30 @@ public function convertData()
 #[derive(Debug, Default, Deserialize)]
 pub struct MediaWikiDump {
     #[serde(rename = "page")]
-    pages: Vec<PageDump>,
+    pub pages: Vec<PageDump>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct PageDump {
-    title: String,
+    pub title: String,
     #[serde(rename = "revision")]
-    revisions: Vec<RevisionDump>,
+    pub revisions: Vec<RevisionDump>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct RevisionDump {
-    timestamp: String,
-    contributor: ContributorDump,
-    comment: String,
-    text: String,
+    pub timestamp: String,
+    pub contributor: ContributorDump,
+    pub comment: String,
+    pub text: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ContributorDump {
-    username: String,
+    pub username: String,
 }
 
-pub fn get_revisions_from_xml(path: PathBuf) -> MediaWikiDump {
+pub fn get_revisions_from_xml(path: &Path) -> MediaWikiDump {
     let file = std::fs::File::open(path).unwrap();
     let reader = std::io::BufReader::new(file);
 
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_load_arch_dump() {
-        let dump = get_revisions_from_xml(PathBuf::from("test_files/ArchWiki-20230802150007.xml"));
+        let dump = get_revisions_from_xml(&PathBuf::from("test_files/ArchWiki-20230802150007.xml"));
         assert_debug_snapshot!(dump);
     }
 }
